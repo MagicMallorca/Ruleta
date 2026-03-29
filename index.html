@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ruleta — Magic Mallorca</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d14;
+    --surface: #16161f;
+    --surface2: #1e1e2a;
+    --border: rgba(255,255,255,0.08);
+    --text: #f0f0f5;
+    --text2: #8888aa;
+    --accent: #7c5cfc;
+    --accent2: #fc5c8a;
+    --radius: 12px;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+  #view-public, #view-admin { display: none; }
+  body.mode-public #view-public { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem 1rem; }
+  body.mode-admin #view-admin { display: block; padding: 2rem 1rem; }
+
+  .brand {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(2.4rem, 6vw, 4rem);
+    letter-spacing: 4px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.2rem;
+    text-align: center;
+  }
+  .subtitle { text-align: center; color: var(--text2); font-size: 0.85rem; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 2rem; }
+
+  .wheel-area { display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
+  .wheel-wrapper { position: relative; width: min(500px, 90vw); height: min(500px, 90vw); }
+  canvas { width: 100%; height: 100%; border-radius: 50%; filter: drop-shadow(0 0 50px rgba(124,92,252,0.35)); }
+
+  .pointer {
+    position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 16px solid transparent;
+    border-right: 16px solid transparent;
+    border-top: 36px solid #fc5c8a;
+    filter: drop-shadow(0 4px 10px rgba(252,92,138,0.7));
+    z-index: 10;
+  }
+  .center-btn {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 80px; height: 80px; border-radius: 50%;
+    background: var(--bg); border: 3px solid var(--accent);
+    color: var(--text); font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem; letter-spacing: 2px; cursor: pointer; z-index: 10;
+    box-shadow: 0 0 24px rgba(124,92,252,0.5); transition: all 0.2s;
+  }
+  .center-btn:hover { background: var(--accent); box-shadow: 0 0 36px rgba(124,92,252,0.8); }
+  .center-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .result-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.25rem 2.5rem;
+    text-align: center; min-width: 280px; min-height: 64px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .result-text { font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; letter-spacing: 2px; }
+  .result-placeholder { color: var(--text2); font-size: 0.9rem; }
+
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); backdrop-filter: blur(6px);
+    z-index: 200; align-items: center; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 3rem 2.5rem;
+    text-align: center; max-width: 420px; width: 90%;
+    animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes popIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .modal-emoji { font-size: 3.5rem; margin-bottom: 1rem; }
+  .modal-winner { font-family: 'Bebas Neue', sans-serif; font-size: 3.4rem; letter-spacing: 3px; line-height: 1.1; margin-bottom: 0.75rem; }
+  .modal-prob { color: var(--text2); font-size: 0.9rem; margin-bottom: 1.5rem; }
+  .modal-close { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; color: var(--text); cursor: pointer; font-size: 0.9rem; padding: 10px 28px; transition: all 0.2s; }
+  .modal-close:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ADMIN */
+  .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+  .badge-admin { background: rgba(124,92,252,0.2); border: 1px solid rgba(124,92,252,0.4); color: var(--accent); border-radius: 20px; padding: 4px 14px; font-size: 0.75rem; letter-spacing: 1px; text-transform: uppercase; }
+  .admin-layout { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 360px; gap: 2rem; align-items: start; }
+  @media(max-width: 800px) { .admin-layout { grid-template-columns: 1fr; } }
+
+  .config-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; }
+  .config-panel h2 { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; letter-spacing: 2px; color: var(--text2); border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
+  .hint { font-size: 0.75rem; color: var(--text2); line-height: 1.5; }
+
+  .items-list { display: flex; flex-direction: column; gap: 0.6rem; max-height: 380px; overflow-y: auto; padding-right: 4px; }
+  .item-row { display: grid; grid-template-columns: 1fr 70px 36px; gap: 6px; align-items: center; }
+  .item-label-wrap { display: flex; align-items: center; gap: 6px; }
+  .color-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+  .item-row input[type="text"], .item-row input[type="number"] { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.85rem; padding: 6px 10px; outline: none; width: 100%; transition: border-color 0.2s; }
+  .item-row input:focus { border-color: var(--accent); }
+  .btn-remove { background: transparent; border: 1px solid rgba(252,92,138,0.3); border-radius: 8px; color: var(--accent2); cursor: pointer; font-size: 0.95rem; width: 36px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .btn-remove:hover { background: rgba(252,92,138,0.15); }
+  .btn-add { background: transparent; border: 1px dashed rgba(124,92,252,0.5); border-radius: 8px; color: var(--accent); cursor: pointer; font-size: 0.85rem; padding: 8px; width: 100%; transition: all 0.2s; }
+  .btn-add:hover { background: rgba(124,92,252,0.1); }
+  .btn-apply { background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: 8px; color: white; cursor: pointer; font-family: 'Inter', sans-serif; font-size: 0.9rem; font-weight: 600; padding: 10px; width: 100%; transition: opacity 0.2s; }
+  .btn-apply:hover { opacity: 0.88; }
+  .prob-total { font-size: 0.8rem; text-align: right; color: #6fcf97; }
+
+  .url-info { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; }
+  .url-info p { font-size: 0.8rem; color: var(--text2); }
+  .url-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 0.78rem; color: var(--accent); font-family: monospace; word-break: break-all; }
+
+  .preview-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text2); text-align: center; margin-bottom: 0.5rem; }
+</style>
+</head>
+<body>
+
+<!-- VISTA PÚBLICA -->
+<div id="view-public">
+  <div class="brand">Magic Mallorca</div>
+  <p class="subtitle">Ruleta de Sorteos</p>
+  <div class="wheel-area">
+    <div class="wheel-wrapper">
+      <div class="pointer"></div>
+      <canvas id="wheelPublic" width="500" height="500"></canvas>
+      <button class="center-btn" id="spinPublic">GIRAR</button>
+    </div>
+    <div class="result-box" id="resultPublic">
+      <span class="result-placeholder">¡Gira la ruleta!</span>
+    </div>
+  </div>
+</div>
+
+<!-- VISTA ADMIN -->
+<div id="view-admin">
+  <div style="max-width:1100px; margin: 0 auto;">
+    <div class="admin-header">
+      <div>
+        <div class="brand" style="text-align:left; font-size:2rem; margin-bottom:0;">Magic Mallorca</div>
+        <div style="color:var(--text2); font-size:0.8rem; letter-spacing:1px; text-transform:uppercase; margin-top:4px;">Panel de administración</div>
+      </div>
+      <span class="badge-admin">🔒 Solo tú ves esto</span>
+    </div>
+
+    <div class="admin-layout">
+      <div class="wheel-area">
+        <p class="preview-label">Vista previa — la ruleta pública es idéntica</p>
+        <div class="wheel-wrapper">
+          <div class="pointer"></div>
+          <canvas id="wheelAdmin" width="500" height="500"></canvas>
+          <button class="center-btn" id="spinAdmin">GIRAR</button>
+        </div>
+        <div class="result-box" id="resultAdmin">
+          <span class="result-placeholder">Prueba la ruleta aquí</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+        <div class="config-panel">
+          <h2>⚙ Secciones</h2>
+          <p class="hint">Peso mayor = quesito más grande = más probabilidad de salir.</p>
+          <div class="items-list" id="itemsList"></div>
+          <button class="btn-add" id="btnAdd">+ Añadir sección</button>
+          <div class="prob-total" id="probTotal"></div>
+          <button class="btn-apply" id="btnApply">Guardar y aplicar cambios</button>
+        </div>
+
+        <div class="url-info">
+          <p>📺 Proyecta esta URL al público (sin configuración):</p>
+          <div class="url-box" id="publicUrl">—</div>
+          <p>🔧 Esta URL es solo para ti (admin):</p>
+          <div class="url-box" id="adminUrl">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box">
+    <div class="modal-emoji">🎉</div>
+    <div class="modal-winner" id="modalWinner">—</div>
+    <div class="modal-prob" id="modalProb"></div>
+    <button class="modal-close" onclick="closeModal()">Cerrar</button>
+  </div>
+</div>
+
+<script>
+const PALETTE = ['#7c5cfc','#fc5c8a','#5cf4c8','#fcb85c','#5cb8fc','#f45c5c','#a8fc5c','#fc5cf4','#5cfca8','#fc8a5c','#5c8afc','#fcf45c','#c85cfc','#5cfcfc','#e05cfc'];
+const STORAGE_KEY = 'magic_ruleta_v2';
+
+let segments = loadSegments();
+let spinning = false;
+let currentAngle = 0;
+
+function defaultSegments() {
+  return [
+    { label: 'Premio 1',       weight: 3, color: PALETTE[0] },
+    { label: 'Premio 2',       weight: 2, color: PALETTE[1] },
+    { label: 'Snack gratis',   weight: 4, color: PALETTE[2] },
+    { label: 'Pack promo',     weight: 2, color: PALETTE[3] },
+    { label: 'Carta rara',     weight: 1, color: PALETTE[4] },
+    { label: 'Vuelve a girar', weight: 3, color: PALETTE[5] },
+  ];
+}
+
+function loadSegments() {
+  try { const r = localStorage.getItem(STORAGE_KEY); if (r) return JSON.parse(r); } catch(e) {}
+  return defaultSegments();
+}
+function saveSegments() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(segments)); } catch(e) {}
+}
+
+const isAdmin = new URLSearchParams(location.search).has('admin');
+document.body.classList.add(isAdmin ? 'mode-admin' : 'mode-public');
+
+const CANVAS_ID  = isAdmin ? 'wheelAdmin'  : 'wheelPublic';
+const RESULT_ID  = isAdmin ? 'resultAdmin' : 'resultPublic';
+const SPINBTN_ID = isAdmin ? 'spinAdmin'   : 'spinPublic';
+
+function totalWeight() { return segments.reduce((s,x) => s + (parseFloat(x.weight)||0), 0); }
+
+function drawWheel(angle) {
+  const canvas = document.getElementById(CANVAS_ID);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height, cx = W/2, cy = H/2, r = W/2 - 8;
+  const total = totalWeight();
+  ctx.clearRect(0, 0, W, H);
+  if (!total || !segments.length) return;
+
+  let start = angle;
+  segments.forEach(seg => {
+    const slice = (parseFloat(seg.weight)/total) * Math.PI * 2;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,start,start+slice); ctx.closePath();
+    ctx.fillStyle = seg.color; ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(start + slice/2);
+    ctx.textAlign = 'right';
+    const fs = Math.min(15, Math.max(9, r * slice * 0.28));
+    ctx.font = `600 ${fs}px Inter,sans-serif`;
+    ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
+    let text = seg.label;
+    const maxW = r * 0.72;
+    while (ctx.measureText(text).width > maxW && text.length > 1) text = text.slice(0,-1);
+    if (text !== seg.label) text += '…';
+    ctx.fillText(text, r-12, fs/3);
+    ctx.restore();
+    start += slice;
+  });
+
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 3; ctx.stroke();
+}
+
+function spin() {
+  if (spinning || segments.length < 2) return;
+  spinning = true;
+  document.getElementById(SPINBTN_ID).disabled = true;
+
+  const total = totalWeight();
+  let rand = Math.random()*total, winnerIdx=0, cum=0;
+  for (let i=0; i<segments.length; i++) { cum += parseFloat(segments[i].weight); if (rand<cum){winnerIdx=i;break;} }
+
+  let startOfWinner=0;
+  for (let i=0;i<winnerIdx;i++) startOfWinner += (parseFloat(segments[i].weight)/total)*Math.PI*2;
+  const mid = startOfWinner + (parseFloat(segments[winnerIdx].weight)/total)*Math.PI*2/2;
+  const extra = (5 + Math.floor(Math.random()*4))*Math.PI*2;
+  const target = -mid + Math.PI*1.5 - extra;
+  const t0 = currentAngle, duration = 4000+Math.random()*1500, t_start = performance.now();
+
+  function ease(t){ return 1-Math.pow(1-t,4); }
+  function frame(now){
+    const t = Math.min((now-t_start)/duration,1);
+    currentAngle = t0 + (target-t0)*ease(t);
+    drawWheel(currentAngle);
+    if(t<1){ requestAnimationFrame(frame); }
+    else {
+      currentAngle=target; drawWheel(currentAngle);
+      spinning=false; document.getElementById(SPINBTN_ID).disabled=false;
+      showResult(winnerIdx);
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+function showResult(idx){
+  const seg = segments[idx];
+  const prob = ((parseFloat(seg.weight)/totalWeight())*100).toFixed(1);
+  document.getElementById(RESULT_ID).innerHTML = `<span class="result-text" style="color:${seg.color}">${seg.label}</span>`;
+  document.getElementById('modalWinner').textContent = seg.label;
+  document.getElementById('modalWinner').style.color = seg.color;
+  document.getElementById('modalProb').textContent = `Probabilidad: ${prob}%`;
+  document.getElementById('modalOverlay').classList.add('show');
+}
+
+function closeModal(){ document.getElementById('modalOverlay').classList.remove('show'); }
+document.getElementById('modalOverlay').addEventListener('click', e=>{ if(e.target===document.getElementById('modalOverlay')) closeModal(); });
+document.getElementById(SPINBTN_ID).addEventListener('click', spin);
+
+/* ── ADMIN PANEL ── */
+if (isAdmin) {
+  function renderList(){
+    const list = document.getElementById('itemsList');
+    list.innerHTML='';
+    segments.forEach((seg,i)=>{
+      const row = document.createElement('div');
+      row.className='item-row';
+      row.innerHTML=`
+        <div class="item-label-wrap">
+          <div class="color-dot" style="background:${seg.color}"></div>
+          <input type="text" value="${seg.label}" placeholder="Nombre…" data-i="${i}" data-field="label">
+        </div>
+        <input type="number" value="${seg.weight}" min="0.1" step="0.5" data-i="${i}" data-field="weight" title="Peso (mayor = más grande)">
+        <button class="btn-remove" data-i="${i}">✕</button>
+      `;
+      list.appendChild(row);
+    });
+    document.getElementById('probTotal').textContent = segments.length ? `Peso total: ${totalWeight().toFixed(1)}` : '';
+  }
+
+  document.getElementById('itemsList').addEventListener('input', e=>{
+    const i=parseInt(e.target.dataset.i), f=e.target.dataset.field;
+    if(f==='label') segments[i].label=e.target.value;
+    if(f==='weight') segments[i].weight=parseFloat(e.target.value)||1;
+    document.getElementById('probTotal').textContent=`Peso total: ${totalWeight().toFixed(1)}`;
+  });
+
+  document.getElementById('itemsList').addEventListener('click', e=>{
+    if(e.target.classList.contains('btn-remove')){
+      segments.splice(parseInt(e.target.dataset.i),1);
+      renderList(); drawWheel(currentAngle);
+    }
+  });
+
+  document.getElementById('btnAdd').addEventListener('click', ()=>{
+    segments.push({label:'Nueva sección', weight:1, color:PALETTE[segments.length%PALETTE.length]});
+    renderList(); document.getElementById('itemsList').scrollTop=9999;
+  });
+
+  document.getElementById('btnApply').addEventListener('click', function(){
+    saveSegments(); drawWheel(currentAngle);
+    this.textContent='✓ Guardado';
+    setTimeout(()=>{ this.textContent='Guardar y aplicar cambios'; },2000);
+  });
+
+  const base = location.href.replace(/\?.*$/,'');
+  document.getElementById('publicUrl').textContent = base;
+  document.getElementById('adminUrl').textContent = base+'?admin';
+
+  renderList();
+}
+
+drawWheel(currentAngle);
+</script>
+</body>
+</html>
